@@ -1,0 +1,73 @@
+services:
+  kafka1:
+    image: confluentinc/cp-kafka:8.0.3
+    container_name: kafka1
+    hostname: kafka1
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: controller,broker
+      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: BROKER:PLAINTEXT,CONTROLLER:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_LISTENERS: CONTROLLER://kafka1:9090,BROKER://0.0.0.0:19091,HOST://0.0.0.0:9091
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka1:19091,HOST://localhost:9091
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka1:9090,2@kafka2:9090,3@kafka3:9090"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/metadata"
+      KAFKA_NODE_ID: 1
+      CLUSTER_ID: "njM3OnYSSpSzcnDrCRVB6A"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "kafka1:9092"
+      # KAFKA_CONFLUENT_METRICS_REPORTER_TOPIC: "confluent-metrics"
+    volumes:
+    - "./meta1:/var/lib/kafka/metadata"
+    - "./secr1:/var/lib/kafka/secrets"
+    ports:
+    - "9091:9091"
+  kafka2:
+    image: confluentinc/cp-kafka:8.0.3
+    container_name: kafka2
+    hostname: kafka2
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: controller,broker
+      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: BROKER:PLAINTEXT,CONTROLLER:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_LISTENERS: CONTROLLER://kafka2:9090,BROKER://0.0.0.0:19092,HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka2:19092,HOST://localhost:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka1:9090,2@kafka2:9090,3@kafka3:9090"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/metadata"
+      KAFKA_NODE_ID: 2
+      CLUSTER_ID: "njM3OnYSSpSzcnDrCRVB6A"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "kafka1:9092"
+      # KAFKA_CONFLUENT_METRICS_REPORTER_TOPIC: "confluent-metrics"
+    volumes:
+    - "./meta2:/var/lib/kafka/metadata"
+    - "./secr2:/var/lib/kafka/secrets"
+    ports:
+    - "9092:9092"
+  kafka3:
+    image: confluentinc/cp-kafka:8.0.3
+    container_name: kafka3
+    hostname: kafka3
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: controller,broker
+      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: BROKER:PLAINTEXT,CONTROLLER:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_LISTENERS: CONTROLLER://kafka3:9090,BROKER://0.0.0.0:19093,HOST://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka3:19093,HOST://localhost:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka1:9090,2@kafka2:9090,3@kafka3:9090"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/metadata"
+      KAFKA_NODE_ID: 3
+      CLUSTER_ID: "njM3OnYSSpSzcnDrCRVB6A"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "kafka1:9092"
+      # KAFKA_CONFLUENT_METRICS_REPORTER_TOPIC: "confluent-metrics"
+    volumes:
+    - "./meta3:/var/lib/kafka/metadata"
+    - "./secr3:/var/lib/kafka/secrets"
+    ports:
+    - "9093:9093"

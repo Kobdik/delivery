@@ -1,0 +1,21 @@
+Saldo:
+Stock st1:
+Reserved 2000 of cem
+Reserved 5000 of sand
+Reserved 5000 of stone
+Stock st2:
+Reserved 7000 of cem
+Reserved 10000 of sand
+Reserved 13000 of stone
+
+Left:
+Stock st1:
+Reserve of cem is       140
+Reserve of sand is      5000
+Reserve of stone is     5000
+Stock st2:
+Reserve of cem is       1230
+Reserve of sand is      10000
+Reserve of stone is     3000
+
+./storage -t calend -t outlet -t stocks -clean true

@@ -1,0 +1,4 @@
+./tadmin -oper desc -t supply -t calend  
+./tadmin -oper add -t supply -t calend  -pn 4
+
+./tadmin -oper add -t calend -t stocks -t outlet -pn 4

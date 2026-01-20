@@ -1,0 +1,16 @@
+Object-1:
+Out of cem is   37141
+Out of sand is  73542
+Out of stone is 110313
+Object-2:
+Out of cem is   36929
+Out of sand is  73858
+Out of stone is 110787
+Object-3:
+Out of cem is   38663
+Out of sand is  77326
+Out of stone is 115989
+Object-4:
+Out of cem is   36993
+Out of sand is  73986
+Out of stone is 110979

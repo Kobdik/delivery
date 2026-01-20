@@ -1,0 +1,8 @@
+Supplier vnd1:
+Supplied 76212 of cem
+Supplied 150710 of sand
+Supplied 252014 of stone
+Supplier vnd2:
+Supplied 148002 of sand
+Supplied 186054 of stone
+Supplied 65884 of cem
