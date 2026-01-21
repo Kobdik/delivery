@@ -1,4 +1,5 @@
-./tadmin -oper desc -t supply -t calend  
-./tadmin -oper add -t supply -t calend  -pn 4
-
+add new topics with replication factor 4
 ./tadmin -oper add -t calend -t stocks -t outlet -pn 4
+
+show descriptions
+./tadmin -oper desc -t calend -t stocks -t outlet -pn 4
