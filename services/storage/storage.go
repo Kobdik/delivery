@@ -11,18 +11,18 @@ import (
 	"syscall"
 	"time"
 
-	// "github.com/Kobdik/delivery/services/common"
+	"github.com/Kobdik/delivery/services/common"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
-type DataCell struct {
-	Id   string   `json:"id,omitempty"`
-	Cmd  string   `json:"cmd,omitempty"`
-	Day  int32    `json:"day,omitempty"`
-	Mdt  string   `json:"mdt,omitempty"`
-	Keys []string `json:"keys"`
-	Val  int      `json:"val"`
-}
+// type common.DataCell struct {
+// 	Id   string   `json:"id,omitempty"`
+// 	Cmd  string   `json:"cmd,omitempty"`
+// 	Day  int32    `json:"day,omitempty"`
+// 	Mdt  string   `json:"mdt,omitempty"`
+// 	Keys []string `json:"keys"`
+// 	Val  int      `json:"val"`
+// }
 
 type Topics []string
 
@@ -40,7 +40,7 @@ func (imp *Topics) Set(value string) error {
 type Stock struct {
 	// sync.RWMutex
 	Mat  map[string]int
-	cal  chan *DataCell
+	cal  chan *common.DataCell
 	cnt  int32
 	cost int
 }
@@ -53,9 +53,9 @@ type Storage struct {
 	termChan  chan bool
 	producer  *kafka.Producer
 	stepDur   time.Duration
-	saldo     []DataCell
+	saldo     []common.DataCell
 	stocks    []Stock
-	flow      chan *DataCell
+	flow      chan *common.DataCell
 	calday    atomic.Int32
 	delays    int
 	calc      bool
@@ -166,24 +166,13 @@ func (s *Storage) loadSaldo() {
 		return
 	}
 
-	s.saldo = make([]DataCell, 0, 6)
+	s.saldo = make([]common.DataCell, 0, 6)
 	err = json.Unmarshal(data, &s.saldo)
 	if err != nil {
 		fmt.Printf("Can't parse %s : %s", s.SaldoPath, err)
 		return
 	}
 	fmt.Println("saldo length:", len(s.saldo))
-}
-
-func (c *DataCell) stIndex() (int, error) {
-	// Keys[4] is st1 or st2
-	switch c.Keys[4] {
-	case "st1":
-		return 0, nil
-	case "st2":
-		return 1, nil
-	}
-	return -1, fmt.Errorf("Invalid storage code: %s for cell %v\n", c.Keys[4], c)
 }
 
 func (s *Storage) initStocks() {
@@ -194,15 +183,15 @@ func (s *Storage) initStocks() {
 				"sand":  0,
 				"stone": 0,
 			},
-			cal:  make(chan *DataCell, 100),
+			cal:  make(chan *common.DataCell, 100),
 			cost: 0,
 		}
 	}
 	s.delays = 0
 	s.calday.Store(0)
-	s.flow = make(chan *DataCell, 4000)
+	s.flow = make(chan *common.DataCell, 4000)
 	for _, cell := range s.saldo {
-		ind, err := cell.stIndex()
+		ind, err := cell.StIndex()
 		if err != nil {
 			fmt.Println(err.Error())
 			continue
@@ -240,7 +229,7 @@ func (s *Storage) stockpileCost() {
 	}
 }
 
-func (s *Storage) incrementStocks(cell *DataCell, i int, day int32) {
+func (s *Storage) incrementStocks(cell *common.DataCell, i int, day int32) {
 	if s.stocks[i].Mat == nil {
 		fmt.Printf("Supply was ignored: %v\n", cell)
 		return
@@ -259,7 +248,7 @@ func (s *Storage) incrementStocks(cell *DataCell, i int, day int32) {
 	s.flow <- cell
 }
 
-func (s *Storage) processDemand(cell *DataCell, ind int) {
+func (s *Storage) processDemand(cell *common.DataCell, ind int) {
 	// increment demands counter
 	s.stocks[ind].cnt++
 	// sure stok's reserve >= 0
@@ -309,7 +298,7 @@ func (s *Storage) readCalend() {
 	}
 	fmt.Println("Storage-cal subscribed to calend topic")
 	var (
-		cell *DataCell
+		cell *common.DataCell
 		cont bool = true
 	)
 	for cont {
@@ -325,7 +314,7 @@ func (s *Storage) readCalend() {
 			}
 			// messages separated with key: Partition-Keys[2] pairs
 			// fmt.Printf("%s Topic %s[%d]-%d read %s\n", msg.Key, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, string(msg.Value))
-			cell = new(DataCell)
+			cell = new(common.DataCell)
 			err = json.Unmarshal(msg.Value, &cell)
 			if err != nil {
 				fmt.Printf("Can't parse : %s", err)
@@ -399,8 +388,8 @@ func (s *Storage) readStocks(inst int) {
 	}
 	fmt.Printf("Storage-%d subscribed to stocks topic\n", inst)
 	var (
-		cal  *DataCell
-		cell *DataCell
+		cal  *common.DataCell
+		cell *common.DataCell
 		cont bool  = true
 		day  int32 = 0
 		ind  int
@@ -422,7 +411,7 @@ func (s *Storage) readStocks(inst int) {
 			}
 			// messages separated with key: Partition-Keys[2] pairs
 			// fmt.Printf("%s Topic %s[%d]-%d read %s\n", msg.Key, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, string(msg.Value))
-			cell = new(DataCell)
+			cell = new(common.DataCell)
 			err = json.Unmarshal(msg.Value, cell)
 			if err != nil {
 				fmt.Printf("Can't parse : %s", err)
@@ -434,7 +423,7 @@ func (s *Storage) readStocks(inst int) {
 				if cell.Day < day || day+1 < cell.Day {
 					continue
 				}
-				ind, err = cell.stIndex()
+				ind, err = cell.StIndex()
 				if err != nil {
 					fmt.Println(err.Error())
 					continue
@@ -460,7 +449,7 @@ func (s *Storage) readStocks(inst int) {
 				if cell.Day < day || day+1 < cell.Day {
 					continue
 				}
-				ind, err = cell.stIndex()
+				ind, err = cell.StIndex()
 				if err != nil {
 					fmt.Println(err)
 					continue
