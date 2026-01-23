@@ -6,4 +6,4 @@ require (
 	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
 )
 
-replace github.com/Kobdik/delivery/services/common => ../common
+// replace github.com/Kobdik/delivery/services/common => ../common
