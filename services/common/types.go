@@ -13,7 +13,7 @@ type DataCell struct {
 	Val  int      `json:"val"`
 }
 
-func (c *DataCell) stIndex() (int, error) {
+func (c *DataCell) StIndex() (int, error) {
 	// Keys[4] is st1 or st2
 	switch c.Keys[4] {
 	case "st1":
