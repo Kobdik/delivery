@@ -1,6 +1,7 @@
 package common
 
 import (
+	"container/list"
 	"fmt"
 )
 
@@ -22,4 +23,13 @@ func (c *DataCell) StIndex() (int, error) {
 		return 1, nil
 	}
 	return -1, fmt.Errorf("Invalid storage code: %s for cell %v\n", c.Keys[4], c)
+}
+
+func (c *DataCell) ReadTask(task *list.Element, mdt string) bool {
+	// copy task to cell
+	*c = task.Value.(DataCell)
+	if c.Keys[1] <= mdt {
+		return true
+	}
+	return false
 }
