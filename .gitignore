@@ -1,0 +1,8 @@
+# Dotenv files
+*.env
+*.csv
+*.exe
+*.sum
+arc
+cert
+vendor

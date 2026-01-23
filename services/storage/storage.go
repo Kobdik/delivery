@@ -15,15 +15,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
-// type common.DataCell struct {
-// 	Id   string   `json:"id,omitempty"`
-// 	Cmd  string   `json:"cmd,omitempty"`
-// 	Day  int32    `json:"day,omitempty"`
-// 	Mdt  string   `json:"mdt,omitempty"`
-// 	Keys []string `json:"keys"`
-// 	Val  int      `json:"val"`
-// }
-
+// calend stocks
 type Topics []string
 
 // String is an implementation of the flag.Value interface
@@ -492,27 +484,7 @@ func (s *Storage) readStocks(inst int) {
 	fmt.Printf("Reader-%d done.\n", inst)
 }
 
-func printDelivered(p *kafka.Producer) {
-	cnt := 0
-	for ev := range p.Events() {
-		switch m := ev.(type) {
-		case *kafka.Message:
-			if m.TopicPartition.Error != nil {
-				fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
-			} else {
-				fmt.Printf("%d Message with key %s delivered to partition [%d]\n%v\n",
-					cnt, string(m.Key), m.TopicPartition.Partition, string(m.Value))
-				cnt++
-			}
-		case kafka.Error:
-			fmt.Printf("Kafka error: %v\n", ev)
-		default:
-			fmt.Printf("Ignored event: %s\n", ev)
-		}
-	}
-	fmt.Println("Delivery channel closed.")
-}
-
+// clean artefacts
 func (s *Storage) cleanTopics() {
 	conf := &kafka.ConfigMap{
 		"bootstrap.servers": "localhost:9091,localhost:9092,localhost:9093",

@@ -1,3 +1,5 @@
+./supplier -prob 1.0 -timer 300 -ling 8 
+
 Supplier vnd1:
 Supplied 76212 of cem
 Supplied 150710 of sand

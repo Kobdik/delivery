@@ -10,18 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Kobdik/delivery/services/common"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
-type DataCell struct {
-	Id   string   `json:"id,omitempty"`
-	Cmd  string   `json:"cmd,omitempty"`
-	Day  int32    `json:"day,omitempty"`
-	Mdt  string   `json:"mdt,omitempty"`
-	Keys []string `json:"keys"`
-	Val  int      `json:"val"`
-}
-
+// global timer
 type Kronos struct {
 	produser   *kafka.Producer
 	msgChan    chan *kafka.Message
@@ -101,9 +94,9 @@ func printDelivered(p *kafka.Producer) {
 
 func (k *Kronos) createMessages() {
 	var (
-		cont bool     = true
-		cnt  int32    = 0
-		cell DataCell = DataCell{
+		cont bool  = true
+		cnt  int32 = 0
+		cell       = common.DataCell{
 			Cmd:  "calend",
 			Day:  0,
 			Keys: []string{"*", "c2025"},

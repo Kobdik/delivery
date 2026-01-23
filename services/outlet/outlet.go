@@ -13,22 +13,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Kobdik/delivery/services/common"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/google/uuid"
 )
 
-type DataCell struct {
-	Id   string   `json:"id,omitempty"`
-	Cmd  string   `json:"cmd,omitempty"`
-	Day  int32    `json:"day,omitempty"`
-	Mdt  string   `json:"mdt,omitempty"`
-	Keys []string `json:"keys"`
-	Val  int      `json:"val"`
-}
-
+// 1-4 outlays
 type Outlay struct {
 	obj   byte
-	cells []DataCell
+	cells []common.DataCell
 	tasks *list.List
 	vals  map[string]int
 }
@@ -43,7 +36,7 @@ type Outlet struct {
 	termChan  chan bool
 	produser  *kafka.Producer
 	stepDur   time.Duration
-	cells     []DataCell
+	cells     []common.DataCell
 	outlays   []Outlay
 	random    *rand.Rand
 	calday    atomic.Int32
@@ -67,7 +60,7 @@ func main() {
 		StocksTop: *p_stocks,
 		Prob:      *p_prob,
 		termChan:  make(chan bool),
-		// cellChan: make(chan *DataCell, 4000),
+		// cellChan: make(chan *common.DataCell, 4000),
 		stepDur: time.Duration(*p_timer * 1000000),
 		random:  rand.New(rand.NewSource(time.Now().UnixNano())),
 		outlays: make([]Outlay, 4),
@@ -136,7 +129,7 @@ func (s *Outlet) loadCells(path string) {
 		return
 	}
 
-	all_cells := make([]DataCell, 0, 4096)
+	all_cells := make([]common.DataCell, 0, 4096)
 	err = json.Unmarshal(data, &all_cells)
 	if err != nil {
 		fmt.Printf("Can't parse %s : %s", path, err)
@@ -147,7 +140,7 @@ func (s *Outlet) loadCells(path string) {
 
 	for i, j := range []byte("1234") {
 		s.outlays[i].obj = j
-		cells := make([]DataCell, 0, 1024)
+		cells := make([]common.DataCell, 0, 1024)
 		for _, cell := range all_cells {
 			// c.Keys[2] is like "t-1-2-3" - project1-object2-task3
 			if cell.Keys[2][4] == j {
@@ -170,7 +163,7 @@ func (s *Outlet) initTasks(i int) {
 	for _, cell := range outlay.cells {
 		back := tasks.Back()
 		// if cell less than back then move cell to top
-		for back != nil && cell.Keys[1] < back.Value.(DataCell).Keys[1] {
+		for back != nil && cell.Keys[1] < back.Value.(common.DataCell).Keys[1] {
 			back = back.Prev()
 		}
 		if back == nil {
@@ -218,7 +211,7 @@ func (s *Outlet) readMessages(i int) {
 	// read outlet's tasks
 
 	var (
-		cell  DataCell
+		cell  common.DataCell
 		cont  bool  = true
 		parts []int = make([]int, 4)
 		day   int32
@@ -236,7 +229,7 @@ func (s *Outlet) readMessages(i int) {
 				continue
 			}
 			// fmt.Printf("Instance %s topic %s[%d]-%d read %s\n", vnd, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, string(msg.Value))
-			cell = DataCell{}
+			cell = common.DataCell{}
 			err = json.Unmarshal(msg.Value, &cell)
 			if err != nil {
 				fmt.Printf("Can't parse data cell : %s", err)
@@ -245,7 +238,7 @@ func (s *Outlet) readMessages(i int) {
 			switch cell.Cmd {
 			case "calend":
 				if len(cell.Keys) < 2 {
-					fmt.Println("Not appropriate DataCell!")
+					fmt.Println("Not appropriate common.DataCell!")
 					continue
 				}
 				// reset stores
@@ -305,84 +298,8 @@ func (s *Outlet) readMessages(i int) {
 	s.Done()
 }
 
-// not used
-func (s *Outlet) readOutlay(i int) {
-	// different group.id
-	conf_cons := &kafka.ConfigMap{
-		"bootstrap.servers": "localhost:9091,localhost:9092,localhost:9093",
-		"client.id":         fmt.Sprintf("out-cid-%d", i),
-		"group.id":          "outlet-grp",
-		"auto.offset.reset": "latest",
-	}
-	// "auto.offset.reset": "earliest",
-	// independent consumer within own group
-	consumer, err := kafka.NewConsumer(conf_cons)
-	if err != nil {
-		fmt.Printf("Failed to create consumer for %d: %s\n", i, err)
-		return
-	}
-	defer consumer.Close()
-	// subscribe to ticket topic
-	// out := fmt.Sprintf("out%c", j)
-	err = consumer.Subscribe(s.OutlayTop, nil)
-	if err != nil {
-		fmt.Printf("Instance-%d failed to subscribe to %s topic, cause: %s\n", i, s.OutlayTop, err)
-		return
-	}
-	fmt.Printf("Instance J%d subscribed to %s topic\n", i, s.OutlayTop)
-	// read outlet's tasks
-	var (
-		cell  DataCell
-		cont  bool = true
-		ind   int
-		parts []int = make([]int, 4)
-	)
-	for cont {
-		select {
-		case <-s.termChan:
-			cont = false
-			fmt.Printf("Reader instance J%d terminated!\n", i)
-		default:
-			// messages read in parallel
-			msg, err := consumer.ReadMessage(5 * s.stepDur)
-			if err != nil {
-				// fmt.Printf("Instance-%c failed to read message, cause %s\n", j, err)
-				continue
-			}
-			parts[msg.TopicPartition.Partition] += 1
-			// fmt.Printf("Instance %s topic %s[%d]-%d read %s\n", vnd, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, string(msg.Value))
-			cell = DataCell{}
-			err = json.Unmarshal(msg.Value, &cell)
-			if err != nil {
-				fmt.Printf("Can't parse data cell : %s", err)
-				continue
-			}
-			switch cell.Cmd {
-			case "outlay":
-				ind = int(cell.Keys[2][4] - '1')
-				s.processOutlay(cell, ind)
-			default:
-				fmt.Printf("Unknown command %v in cell\n", cell)
-				continue
-			}
-		}
-	}
-	for i, p := range parts {
-		fmt.Printf("%d: %d\n", i, p)
-	}
-	s.Done()
-}
-
-func (c *DataCell) readTask(task *list.Element, mdt string) bool {
-	// copy task to cell
-	*c = task.Value.(DataCell)
-	if c.Keys[1] <= mdt {
-		return true
-	}
-	return false
-}
-
-func (s *Outlet) processCalend(cell DataCell, i int) {
+// tasks for day
+func (s *Outlet) processCalend(cell common.DataCell, i int) {
 	var (
 		cnt    int32      = 0
 		day    int32      = cell.Day
@@ -396,7 +313,7 @@ func (s *Outlet) processCalend(cell DataCell, i int) {
 	}
 	// fmt.Println(cell.Val, cell.Keys)
 	// mark tasks and send demand
-	for task := tasks.Front(); task != nil && cell.readTask(task, mdt); task = task.Next() {
+	for task := tasks.Front(); task != nil && cell.ReadTask(task, mdt); task = task.Next() {
 		if cnt > 99 {
 			fmt.Printf("Instance %d day %d: Too many demands send!\n", i, day)
 			break
@@ -425,7 +342,7 @@ func (s *Outlet) processCalend(cell DataCell, i int) {
 }
 
 // clean task list
-func (s *Outlet) processOutlay(cell DataCell, ind int) {
+func (s *Outlet) processOutlay(cell common.DataCell, ind int) {
 	var (
 		id     string     = cell.Id
 		outlay *Outlay    = &s.outlays[ind]
@@ -438,7 +355,7 @@ func (s *Outlet) processOutlay(cell DataCell, ind int) {
 	}
 	mdt = cell.Mdt
 	// traverse tasks from beginning
-	for task := tasks.Front(); task != nil && cell.readTask(task, mdt); task = task.Next() {
+	for task := tasks.Front(); task != nil && cell.ReadTask(task, mdt); task = task.Next() {
 		if cell.Id == id {
 			// count and delete task
 			outlay.vals[cell.Keys[3]] += cell.Val

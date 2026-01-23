@@ -19,3 +19,5 @@ Reserve of sand is      10000
 Reserve of stone is     3000
 
 ./storage -t calend -t outlet -t stocks -clean true
+
+./storage -t calend -t stocks -timer 300 -ling 15 -calc 

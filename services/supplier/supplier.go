@@ -12,18 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Kobdik/delivery/services/common"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
-type DataCell struct {
-	Id   string   `json:"id,omitempty"`
-	Cmd  string   `json:"cmd,omitempty"`
-	Day  int32    `json:"day,omitempty"`
-	Mdt  string   `json:"mdt,omitempty"`
-	Keys []string `json:"keys"`
-	Val  int      `json:"val"`
-}
-
+// supplier
 type Vendor struct {
 	vnd   string
 	tasks *list.List
@@ -40,7 +33,7 @@ type Supplier struct {
 	termChan chan bool
 	produser *kafka.Producer
 	stepDur  time.Duration
-	cells    []DataCell
+	cells    []common.DataCell
 	random   *rand.Rand
 	vendors  []Vendor
 }
@@ -131,7 +124,7 @@ func (s *Supplier) loadCells(path string) {
 		return
 	}
 
-	cells := make([]DataCell, 0, 100)
+	cells := make([]common.DataCell, 0, 100)
 	err = json.Unmarshal(data, &cells)
 	if err != nil {
 		fmt.Printf("Can't parse %s : %s", path, err)
@@ -142,7 +135,7 @@ func (s *Supplier) loadCells(path string) {
 }
 
 func (s *Supplier) readTasks(vnd string) *list.List {
-	cells := make([]DataCell, 0, 50)
+	cells := make([]common.DataCell, 0, 50)
 	for _, cell := range s.cells {
 		if vnd == cell.Keys[2] {
 			cells = append(cells, cell)
@@ -155,7 +148,7 @@ func (s *Supplier) readTasks(vnd string) *list.List {
 	for _, cell := range cells {
 		back := tasks.Back()
 		// if cell less than back then move cell to top
-		for back != nil && cell.Keys[1] < back.Value.(DataCell).Keys[1] {
+		for back != nil && cell.Keys[1] < back.Value.(common.DataCell).Keys[1] {
 			back = back.Prev()
 		}
 		if back == nil {
@@ -197,7 +190,7 @@ func (s *Supplier) readMessages(inst int) {
 		return
 	}
 	var (
-		cell DataCell
+		cell common.DataCell
 		cont bool = true
 	)
 	for cont {
@@ -206,7 +199,7 @@ func (s *Supplier) readMessages(inst int) {
 			cont = false
 			fmt.Printf("Reader instance %s terminated!\n", vnd)
 		default:
-			cell = DataCell{}
+			cell = common.DataCell{}
 			// calend - impulse for tasks reading
 			msg, err := consumer.ReadMessage(5 * s.stepDur)
 			if err != nil {
@@ -241,16 +234,7 @@ func (s *Supplier) initVendor(inst int) {
 	vendor.tasks = s.readTasks(vendor.vnd)
 }
 
-func (c *DataCell) readTask(task *list.Element, mdt string) bool {
-	// copy task to cell
-	*c = task.Value.(DataCell)
-	if c.Keys[1] <= mdt {
-		return true
-	}
-	return false
-}
-
-func (s *Supplier) popTasks(cell DataCell, inst int) {
+func (s *Supplier) popTasks(cell common.DataCell, inst int) {
 	var (
 		day        int32      = cell.Day
 		mdt        string     = cell.Keys[1]
@@ -267,7 +251,7 @@ func (s *Supplier) popTasks(cell DataCell, inst int) {
 		return
 	}
 	// traverse tasks from beginning
-	for task = tasks.Front(); task != nil && cell.readTask(task, mdt); task = next {
+	for task = tasks.Front(); task != nil && cell.ReadTask(task, mdt); task = next {
 		next = task.Next()
 		if s.random.Float64() < s.prob {
 			// fmt.Printf("%s catch Cal: %s, Vnd: %s, Mat: %s, Store: %s, Val: %d\n", sdt, cell.Keys[1], cell.Keys[2], cell.Keys[3], cell.Keys[4], cell.Val)

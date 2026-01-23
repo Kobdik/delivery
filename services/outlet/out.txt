@@ -1,3 +1,5 @@
+./outlet -timer 300 -ling 20
+
 Object-1:
 Out of cem is   37141
 Out of sand is  73542
