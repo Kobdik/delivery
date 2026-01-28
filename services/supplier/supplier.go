@@ -213,7 +213,7 @@ func (s *Supplier) readMessages(inst int) {
 			}
 			// fmt.Printf("Instance %s topic %s[%d]-%d read %s\n", vnd, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, string(msg.Value))
 			if cell.Day > 0 {
-				time.Sleep(30 * time.Millisecond)
+				// time.Sleep(30 * time.Millisecond)
 				// execute tasks
 				s.popTasks(cell, inst)
 			}

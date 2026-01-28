@@ -20,4 +20,5 @@ Reserve of stone is     3000
 
 ./storage -t calend -t outlet -t stocks -clean true
 
-./storage -t calend -t stocks -timer 300 -ling 15 -calc 
+./storage -t calend -t stocks -timer 200 -ling 10 -calc 
+./storage -t calend -t stocks -timer 80 -ling 5 -calc 

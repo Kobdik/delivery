@@ -2,7 +2,7 @@
 *.env
 *.csv
 *.exe
-*.sum
+kafka
 arc
 cert
 vendor

@@ -1,4 +1,5 @@
-./outlet -timer 300 -ling 20
+./outlet -timer 200 -ling 10
+./outlet -timer 80 -ling 10
 
 Object-1:
 Out of cem is   37141

@@ -1,4 +1,5 @@
-./supplier -prob 1.0 -timer 300 -ling 8 
+./supplier -prob 1.0 -timer 200 -ling 8 
+./supplier -prob 1.0 -timer 80 -ling 6 
 
 Supplier vnd1:
 Supplied 76212 of cem

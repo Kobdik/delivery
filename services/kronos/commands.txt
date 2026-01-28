@@ -1,1 +1,1 @@
-./kronos -timer 300
+./kronos -timer 200

@@ -90,6 +90,8 @@ func main() {
 
 	stg.loadSaldo()
 
+	stg.initStocks()
+
 	conf_prod := &kafka.ConfigMap{
 		"bootstrap.servers":  "localhost:9091,localhost:9092,localhost:9093",
 		"client.id":          "storage",
@@ -221,29 +223,25 @@ func (s *Storage) stockpileCost() {
 	}
 }
 
-func (s *Storage) incrementStocks(cell *common.DataCell, i int, day int32) {
-	if s.stocks[i].Mat == nil {
+func (s *Storage) incrementStocks(cell *common.DataCell, ind int) {
+	if s.stocks[ind].Mat == nil {
 		fmt.Printf("Supply was ignored: %v\n", cell)
 		return
 	}
-	// just warning
-	if cell.Day != day {
-		fmt.Printf("%d income: %d\n", day, cell.Day)
-	}
-	// fmt.Printf("%s : %s inc %s storage %s\n", cell.Mdt, cell.Keys[1], cell.Keys[3], cell.Keys[4])
-	// s.stocks[i].Lock()
-	s.stocks[i].Mat[cell.Keys[3]] += cell.Val
-	// s.stocks[i].Unlock()
+	// there is no concurent access
+	s.stocks[ind].Mat[cell.Keys[3]] += cell.Val
+	// increment materials cost
 	if s.calc {
-		s.stocks[i].cost += matCost(cell.Keys[3], cell.Val)
+		s.stocks[ind].cost += matCost(cell.Keys[3], cell.Val)
 	}
+	// cell.Ts = time.Now().UnixMilli()
 	s.flow <- cell
 }
 
 func (s *Storage) processDemand(cell *common.DataCell, ind int) {
 	// increment demands counter
 	s.stocks[ind].cnt++
-	// sure stok's reserve >= 0
+	// sure stock's reserve >= 0
 	reserve := s.stocks[ind].Mat[cell.Keys[3]]
 	if reserve < cell.Val {
 		// fmt.Printf("%s Not enough %s in %s. Remains %d, but demands %d\n", mdt, cell.Keys[3], cell.Keys[4], reserve, cell.Val)
@@ -259,11 +257,12 @@ func (s *Storage) processDemand(cell *common.DataCell, ind int) {
 	}
 	s.producer.Produce(&kafka.Message{
 		TopicPartition: *top,
-		// Key:            []byte{cell.Keys[2][4]},
+		// Key: []byte{cell.Keys[2][4]},
 		Value: val,
 	}, nil)
 	// decrement stock's value
 	s.stocks[ind].Mat[cell.Keys[3]] = reserve - cell.Val
+	// cell.Ts = time.Now().UnixMilli()
 	s.flow <- cell
 }
 
@@ -314,22 +313,15 @@ func (s *Storage) readCalend() {
 			}
 			switch cell.Cmd {
 			case "calend":
-				if cell.Day == 0 {
-					// prepare stocks
-					s.initStocks()
+				// sequence of days
+				if cell.Day > 0 && !s.calday.CompareAndSwap(cell.Day-1, cell.Day) {
+					fmt.Printf("Topic calend[%d] wrong sequense of days %d, %d timestamp %d, time %d (ms)\n",
+						msg.TopicPartition.Partition, s.calday.Load(), cell.Day,
+						msg.Timestamp.Local().UnixMilli(), time.Now().UnixMilli())
 					continue
 				}
-				// sequence of marshalled dates
-				if !s.calday.CompareAndSwap(cell.Day-1, cell.Day) {
-					if s.verb {
-						fmt.Printf("Topic calend[%d] wrong sequense of days %d, %d timestamp %d, time %d (ms)\n",
-							msg.TopicPartition.Partition, s.calday.Load(), cell.Day,
-							msg.Timestamp.Local().UnixMilli(), time.Now().UnixMilli())
-					} else {
-						fmt.Printf("Topic calend[%d] wrong sequense of days %d, %d\n",
-							msg.TopicPartition.Partition, s.calday.Load(), cell.Day)
-					}
-					continue
+				if s.stocks[0].cnt > 60 || s.stocks[1].cnt > 60 {
+					fmt.Printf("Calend %d. Too many demands!\n", cell.Day-1)
 				}
 				// demands counters
 				s.stocks[0].cnt = 0
@@ -392,9 +384,9 @@ func (s *Storage) readStocks(inst int) {
 			cont = false
 			fmt.Printf("Storage-%d terminated!\n", inst)
 		case cal = <-s.stocks[inst].cal:
-			// marshalled date
+			// calend day
 			day = cal.Day
-		// stocks topic
+		// read stocks topic
 		default:
 			msg, err := consumer.ReadMessage(5 * s.stepDur)
 			if err != nil {
@@ -411,8 +403,9 @@ func (s *Storage) readStocks(inst int) {
 			}
 			switch cell.Cmd {
 			case "supply":
-				// too late or too early
-				if cell.Day < day || day+1 < cell.Day {
+				// too late
+				if cell.Day < day {
+					fmt.Printf("supply %d too late at %d\n", cell.Day, day)
 					continue
 				}
 				ind, err = cell.StIndex()
@@ -420,25 +413,33 @@ func (s *Storage) readStocks(inst int) {
 					fmt.Println(err.Error())
 					continue
 				}
-				if cell.Day > day || s.stocks[ind].cnt > 30 {
+				// update day
+				if s.stocks[ind].cnt == 0 {
 					day = s.calday.Load()
 					if s.verb {
-						fmt.Printf("%d Updated stocks[%d] day %d for supply %d\n",
-							s.stocks[ind].cnt, msg.TopicPartition.Partition, day, cell.Day)
+						fmt.Printf("updated stocks[%d] supply %d at %d\n",
+							msg.TopicPartition.Partition, cell.Day, day)
 					}
+				}
+				// too early
+				if day+1 < cell.Day {
+					fmt.Printf("supply %d too early at %d\n", cell.Day, day)
+					continue
 				}
 				// take all supplied materials as is
 				if cell.Day != day {
 					if s.verb {
 						fmt.Printf("%d Storage-%d supply day %d differ from stocks[%d] day %d\n",
 							s.stocks[ind].cnt, inst, cell.Day, msg.TopicPartition.Partition, day)
+					} else {
+						fmt.Printf("%d income: %d\n", day, cell.Day)
 					}
 				}
 				// fmt.Printf("Instance-%d Stock %d\n", inst, ind)
-				s.incrementStocks(cell, ind, day)
+				s.incrementStocks(cell, ind)
 			case "demand":
-				// too late or too early
-				if cell.Day < day || day+1 < cell.Day {
+				// ignore too late
+				if cell.Day < day {
 					continue
 				}
 				ind, err = cell.StIndex()
@@ -446,27 +447,35 @@ func (s *Storage) readStocks(inst int) {
 					fmt.Println(err)
 					continue
 				}
-				if cell.Day > day || s.stocks[ind].cnt > 30 {
+				// update day
+				if s.stocks[ind].cnt%20 == 0 {
 					day = s.calday.Load()
 					if s.verb {
-						fmt.Printf("%d Updated stocks[%d] day %d for demand %d\n",
-							s.stocks[ind].cnt, msg.TopicPartition.Partition, day, cell.Day)
+						fmt.Printf("updated stocks[%d] demand %d at %d\n",
+							msg.TopicPartition.Partition, cell.Day, day)
 					}
 				}
-				// check demands day
-				if cell.Day != day {
-					if s.verb {
-						fmt.Printf("%d Storage-%d demand day %d differ from stocks[%d] day %d timestamp %d time %d (ms)\n",
-							s.stocks[ind].cnt, inst, cell.Day, msg.TopicPartition.Partition, day,
-							msg.Timestamp.Local().UnixMilli(), time.Now().UnixMilli())
+				// ignore too early
+				if day+1 < cell.Day {
+					if s.verb && s.stocks[ind].cnt == 0 {
+						fmt.Printf("too early stocks[%d] demand %d at %d\n",
+							msg.TopicPartition.Partition, cell.Day, day)
 					}
 					continue
 				}
 				// check daily sent counter
 				if s.stocks[ind].cnt > 60 {
+					// too many demands!
+					continue
+				}
+				// check demands day
+				if cell.Day != day {
 					if s.verb {
-						fmt.Println(cell.Mdt, "Too many demands!")
+						fmt.Printf("Demands: %d. Storage-%d demand day %d differ from stocks[%d] day %d timestamp %d time %d (ms)\n",
+							s.stocks[ind].cnt, inst, cell.Day, msg.TopicPartition.Partition, day,
+							msg.Timestamp.Local().UnixMilli(), time.Now().UnixMilli())
 					}
+					// Storage demand day differ from stocks current day
 					continue
 				}
 				// demands from outlet

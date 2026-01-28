@@ -248,7 +248,7 @@ func (s *Outlet) readMessages(i int) {
 						// set only once
 						s.calday.Store(day)
 					}
-					time.Sleep(2 * s.stepDur)
+					time.Sleep(s.stepDur)
 					s.initTasks(i)
 					continue
 				}
@@ -257,21 +257,20 @@ func (s *Outlet) readMessages(i int) {
 					// first event win
 					day = s.calday.Load()
 				}
-				if s.verb {
-					// fmt.Printf("Instance-%d day: %d\n", i, cell.Day)
-					fmt.Printf("Instance-%d topic calend[%d] day %d, timestamp %d, time %d (ms)\n",
-						msg.TopicPartition.Partition, i, day,
-						msg.Timestamp.Local().UnixMilli(), time.Now().UnixMilli())
-				}
-				// time.Sleep(20 * time.Millisecond)
+				// update day
 				if cell.Day != day {
 					day = s.calday.Load()
+				}
+				if s.verb {
+					fmt.Printf("Calend %d. Instance-%d topic calend[%d] day %d, timestamp %d, time %d (ms)\n",
+						cell.Day, msg.TopicPartition.Partition, i, day,
+						msg.Timestamp.Local().UnixMilli(), time.Now().UnixMilli())
 				}
 				if cell.Day == day {
 					s.processCalend(cell, i)
 				} else {
 					fmt.Printf("Instance-%d topic calend[%d] cell's day %d differ from current day %d\n",
-						msg.TopicPartition.Partition, i, day, cell.Day)
+						msg.TopicPartition.Partition, i, cell.Day, day)
 				}
 			case "outlay":
 				if len(cell.Keys) < 5 {
@@ -315,7 +314,7 @@ func (s *Outlet) processCalend(cell common.DataCell, i int) {
 	// mark tasks and send demand
 	for task := tasks.Front(); task != nil && cell.ReadTask(task, mdt); task = task.Next() {
 		if cnt > 99 {
-			fmt.Printf("Instance %d day %d: Too many demands send!\n", i, day)
+			fmt.Printf("Instance-%d day %d: Too many demands sent!\n", i, day)
 			break
 		}
 		// fmt.Printf("%s catch Cal: %s, Vnd: %s, Mat: %s, Store: %s, Val: %d\n", mdt, cell.Keys[1], cell.Keys[2], cell.Keys[3], cell.Keys[4], cell.Val)
@@ -347,13 +346,12 @@ func (s *Outlet) processOutlay(cell common.DataCell, ind int) {
 		id     string     = cell.Id
 		outlay *Outlay    = &s.outlays[ind]
 		tasks  *list.List = outlay.tasks
-		mdt    string
-		// ok     bool
+		mdt    string     = cell.Keys[1]
 	)
 	if tasks == nil {
 		return
 	}
-	mdt = cell.Mdt
+
 	// traverse tasks from beginning
 	for task := tasks.Front(); task != nil && cell.ReadTask(task, mdt); task = task.Next() {
 		if cell.Id == id {
