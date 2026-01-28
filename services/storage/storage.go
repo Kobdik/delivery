@@ -15,6 +15,11 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
+type FlowCell struct {
+	common.DataCell
+	Ts int64 `json:"ts,omitempty"`
+}
+
 // calend stocks
 type Topics []string
 
@@ -32,7 +37,7 @@ func (imp *Topics) Set(value string) error {
 type Stock struct {
 	// sync.RWMutex
 	Mat  map[string]int
-	cal  chan *common.DataCell
+	cal  chan *FlowCell
 	cnt  int32
 	cost int
 }
@@ -45,14 +50,16 @@ type Storage struct {
 	termChan  chan bool
 	producer  *kafka.Producer
 	stepDur   time.Duration
-	saldo     []common.DataCell
+	saldo     []FlowCell
 	stocks    []Stock
-	flow      chan *common.DataCell
+	flow      chan *FlowCell
 	calday    atomic.Int32
 	delays    int
 	calc      bool
 	verb      bool
 }
+
+const B10_mask = 1<<10 - 1
 
 func main() {
 	var topics Topics
@@ -119,7 +126,10 @@ func main() {
 
 	stg.waitReaders()
 
-	fmt.Println("Done!", stg.delays, len(stg.flow))
+	if stg.calc {
+		stg.calcCost()
+	}
+	fmt.Printf("Done with %d delayed demands.\n", stg.delays)
 }
 
 func (s *Storage) waitTerm() {
@@ -137,8 +147,15 @@ func (s *Storage) waitTerm() {
 
 func (s *Storage) waitReaders() {
 	s.Wait()
-	cost := 0
+	// flush produced
 	unflushed := s.producer.Flush(2000)
+	fmt.Println("Stock readers finished", unflushed)
+	// read available
+	close(s.flow)
+}
+
+func (s *Storage) calcCost() {
+	cost := 0
 	for i := range s.stocks {
 		fmt.Printf("Stock %d:\n", i)
 		for mat, val := range s.stocks[i].Mat {
@@ -146,10 +163,24 @@ func (s *Storage) waitReaders() {
 		}
 		cost += s.stocks[i].cost
 	}
-	if s.calc {
-		fmt.Printf("Cost of stockpiles: %d\n", cost/30000)
+	cost = cost / 30000
+	fmt.Printf("Cost of stockpiles: %d\n", cost)
+
+	cells := make([]FlowCell, 0, 4000)
+	for cell := range s.flow {
+		cells = append(cells, *cell)
 	}
-	fmt.Println("Stock readers finished", unflushed)
+
+	data, err := json.Marshal(cells)
+	if err != nil {
+		fmt.Printf("Can't marshall flow of cells : %s\n", err)
+		return
+	}
+
+	err = os.WriteFile(fmt.Sprintf("Flow_%dcost_%ddelays.json", cost, s.delays), data, 0644)
+	if err != nil {
+		fmt.Println("Ошибка записи файла:", err)
+	}
 }
 
 func (s *Storage) loadSaldo() {
@@ -160,7 +191,7 @@ func (s *Storage) loadSaldo() {
 		return
 	}
 
-	s.saldo = make([]common.DataCell, 0, 6)
+	s.saldo = make([]FlowCell, 0, 6)
 	err = json.Unmarshal(data, &s.saldo)
 	if err != nil {
 		fmt.Printf("Can't parse %s : %s", s.SaldoPath, err)
@@ -177,13 +208,13 @@ func (s *Storage) initStocks() {
 				"sand":  0,
 				"stone": 0,
 			},
-			cal:  make(chan *common.DataCell, 100),
+			cal:  make(chan *FlowCell, 100),
 			cost: 0,
 		}
 	}
 	s.delays = 0
 	s.calday.Store(0)
-	s.flow = make(chan *common.DataCell, 4000)
+	s.flow = make(chan *FlowCell, 4000)
 	for _, cell := range s.saldo {
 		ind, err := cell.StIndex()
 		if err != nil {
@@ -223,7 +254,7 @@ func (s *Storage) stockpileCost() {
 	}
 }
 
-func (s *Storage) incrementStocks(cell *common.DataCell, ind int) {
+func (s *Storage) incrementStocks(cell *FlowCell, ind int) {
 	if s.stocks[ind].Mat == nil {
 		fmt.Printf("Supply was ignored: %v\n", cell)
 		return
@@ -234,11 +265,11 @@ func (s *Storage) incrementStocks(cell *common.DataCell, ind int) {
 	if s.calc {
 		s.stocks[ind].cost += matCost(cell.Keys[3], cell.Val)
 	}
-	// cell.Ts = time.Now().UnixMilli()
+	cell.Ts = time.Now().UnixMilli() & B10_mask
 	s.flow <- cell
 }
 
-func (s *Storage) processDemand(cell *common.DataCell, ind int) {
+func (s *Storage) processDemand(cell *FlowCell, ind int) {
 	// increment demands counter
 	s.stocks[ind].cnt++
 	// sure stock's reserve >= 0
@@ -262,7 +293,7 @@ func (s *Storage) processDemand(cell *common.DataCell, ind int) {
 	}, nil)
 	// decrement stock's value
 	s.stocks[ind].Mat[cell.Keys[3]] = reserve - cell.Val
-	// cell.Ts = time.Now().UnixMilli()
+	cell.Ts = time.Now().UnixMilli() & B10_mask
 	s.flow <- cell
 }
 
@@ -289,7 +320,7 @@ func (s *Storage) readCalend() {
 	}
 	fmt.Println("Storage-cal subscribed to calend topic")
 	var (
-		cell *common.DataCell
+		cell *FlowCell
 		cont bool = true
 	)
 	for cont {
@@ -305,7 +336,7 @@ func (s *Storage) readCalend() {
 			}
 			// messages separated with key: Partition-Keys[2] pairs
 			// fmt.Printf("%s Topic %s[%d]-%d read %s\n", msg.Key, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, string(msg.Value))
-			cell = new(common.DataCell)
+			cell = new(FlowCell)
 			err = json.Unmarshal(msg.Value, &cell)
 			if err != nil {
 				fmt.Printf("Can't parse : %s", err)
@@ -313,8 +344,11 @@ func (s *Storage) readCalend() {
 			}
 			switch cell.Cmd {
 			case "calend":
+				if cell.Day == 0 {
+					continue
+				}
 				// sequence of days
-				if cell.Day > 0 && !s.calday.CompareAndSwap(cell.Day-1, cell.Day) {
+				if !s.calday.CompareAndSwap(cell.Day-1, cell.Day) {
 					fmt.Printf("Topic calend[%d] wrong sequense of days %d, %d timestamp %d, time %d (ms)\n",
 						msg.TopicPartition.Partition, s.calday.Load(), cell.Day,
 						msg.Timestamp.Local().UnixMilli(), time.Now().UnixMilli())
@@ -372,8 +406,8 @@ func (s *Storage) readStocks(inst int) {
 	}
 	fmt.Printf("Storage-%d subscribed to stocks topic\n", inst)
 	var (
-		cal  *common.DataCell
-		cell *common.DataCell
+		cal  *FlowCell
+		cell *FlowCell
 		cont bool  = true
 		day  int32 = 0
 		ind  int
@@ -395,7 +429,7 @@ func (s *Storage) readStocks(inst int) {
 			}
 			// messages separated with key: Partition-Keys[2] pairs
 			// fmt.Printf("%s Topic %s[%d]-%d read %s\n", msg.Key, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, string(msg.Value))
-			cell = new(common.DataCell)
+			cell = new(FlowCell)
 			err = json.Unmarshal(msg.Value, cell)
 			if err != nil {
 				fmt.Printf("Can't parse : %s", err)
@@ -432,7 +466,7 @@ func (s *Storage) readStocks(inst int) {
 						fmt.Printf("%d Storage-%d supply day %d differ from stocks[%d] day %d\n",
 							s.stocks[ind].cnt, inst, cell.Day, msg.TopicPartition.Partition, day)
 					} else {
-						fmt.Printf("%d income: %d\n", day, cell.Day)
+						fmt.Printf("supply %d income at %d\n", cell.Day, day)
 					}
 				}
 				// fmt.Printf("Instance-%d Stock %d\n", inst, ind)
