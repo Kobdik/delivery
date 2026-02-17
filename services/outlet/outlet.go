@@ -223,7 +223,7 @@ func (s *Outlet) readMessages(i int) {
 			fmt.Printf("Reader instance J%c terminated!\n", j)
 		default:
 			// messages read in parallel
-			msg, err := consumer.ReadMessage(5 * s.stepDur)
+			msg, err := consumer.ReadMessage(10 * s.stepDur)
 			if err != nil {
 				// fmt.Printf("Instance-%c failed to read message, cause %s\n", j, err)
 				continue

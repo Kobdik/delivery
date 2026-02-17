@@ -38,6 +38,8 @@ type Supplier struct {
 	vendors  []Vendor
 }
 
+const B22_mask = 1<<22 - 1
+
 func main() {
 	p_path := flag.String("path", "./sup_tasks.json", "path to tasks json file")
 	p_cal := flag.String("cal", "calend", "consumed calend topic")
@@ -79,7 +81,7 @@ func main() {
 	defer producer.Close()
 	sup.produser = producer
 
-	// go printDelivered(producer)
+	go printDelivered(producer)
 
 	vnds := []string{"vnd1", "vnd2"}
 	for i, vnd := range vnds {
@@ -192,6 +194,7 @@ func (s *Supplier) readMessages(inst int) {
 	var (
 		cell common.DataCell
 		cont bool = true
+		ts   int64
 	)
 	for cont {
 		select {
@@ -201,7 +204,7 @@ func (s *Supplier) readMessages(inst int) {
 		default:
 			cell = common.DataCell{}
 			// calend - impulse for tasks reading
-			msg, err := consumer.ReadMessage(5 * s.stepDur)
+			msg, err := consumer.ReadMessage(10 * s.stepDur)
 			if err != nil {
 				// fmt.Printf("Instance %s failed to read message, cause %s\n", vnd, err)
 				continue
@@ -213,7 +216,9 @@ func (s *Supplier) readMessages(inst int) {
 			}
 			// fmt.Printf("Instance %s topic %s[%d]-%d read %s\n", vnd, *msg.TopicPartition.Topic, msg.TopicPartition.Partition, msg.TopicPartition.Offset, string(msg.Value))
 			if cell.Day > 0 {
-				// time.Sleep(30 * time.Millisecond)
+				ts = msg.Timestamp.UnixMicro() & B22_mask
+				fmt.Printf("%2d:%s:%7d:%7d\n", cell.Day, vnd,
+					msg.Timestamp.UnixMicro()&B22_mask, ts)
 				// execute tasks
 				s.popTasks(cell, inst)
 			}
@@ -286,9 +291,10 @@ func printDelivered(p *kafka.Producer) {
 			if m.TopicPartition.Error != nil {
 				fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
 			} else {
-				fmt.Printf("%d Message with key %s delivered to partition [%d]-%d\n%v\n",
-					cnt, string(m.Key), m.TopicPartition.Partition, m.TopicPartition.Offset, string(m.Value))
+				// msg counter
 				cnt++
+				// fmt.Printf("%d Message with key %s delivered to partition [%d]-%d\n%v\n",
+				// 	cnt, string(m.Key), m.TopicPartition.Partition, m.TopicPartition.Offset, string(m.Value))
 			}
 		case kafka.Error:
 			fmt.Printf("Kafka error: %v\n", ev)

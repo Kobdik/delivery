@@ -75,10 +75,10 @@ func printDelivered(p *kafka.Producer) {
 		switch et := ev.(type) {
 		case *kafka.Message:
 			m := et
-			cnt++
 			if m.TopicPartition.Error != nil {
 				fmt.Printf("%d Delivery failed: %v\n", cnt, m.TopicPartition.Error)
 			} else {
+				cnt++
 				// fmt.Printf("%s %s Delivered to topic %s [%d] at offset %v\n",
 				// 	string(m.Key), string(m.Value), *m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 			}
@@ -100,9 +100,9 @@ func (k *Kronos) createMessages() {
 			Cmd:  "calend",
 			Day:  0,
 			Keys: []string{"*", "c2025"},
-			Val:  0,
+			Val:  int(time.Now().UnixMicro() & 4095),
 		}
-		// ts time.Time
+		// ts
 	)
 	val, err := json.Marshal(cell)
 	if err != nil {
@@ -131,7 +131,7 @@ func (k *Kronos) createMessages() {
 		case <-ticker.C:
 			cell.Day = cnt
 			cell.Keys[1] = time.Date(2025, 8, int(cnt), 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-			cell.Val = 0
+			// cell.Val == start time marker
 			val, err := json.Marshal(cell)
 			if err != nil {
 				fmt.Printf("Can't marshall data cell %v : %s\n", cell, err)

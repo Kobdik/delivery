@@ -59,7 +59,10 @@ type Storage struct {
 	verb      bool
 }
 
-const B10_mask = 1<<10 - 1
+const (
+	B20_mask = 1<<20 - 1
+	B22_mask = 1<<22 - 1
+)
 
 func main() {
 	var topics Topics
@@ -265,7 +268,7 @@ func (s *Storage) incrementStocks(cell *FlowCell, ind int) {
 	if s.calc {
 		s.stocks[ind].cost += matCost(cell.Keys[3], cell.Val)
 	}
-	cell.Ts = time.Now().UnixMilli() & B10_mask
+	cell.Ts = time.Now().UnixMicro() & B20_mask
 	s.flow <- cell
 }
 
@@ -293,7 +296,7 @@ func (s *Storage) processDemand(cell *FlowCell, ind int) {
 	}, nil)
 	// decrement stock's value
 	s.stocks[ind].Mat[cell.Keys[3]] = reserve - cell.Val
-	cell.Ts = time.Now().UnixMilli() & B10_mask
+	cell.Ts = time.Now().UnixMicro() & B20_mask
 	s.flow <- cell
 }
 
@@ -322,6 +325,8 @@ func (s *Storage) readCalend() {
 	var (
 		cell *FlowCell
 		cont bool = true
+		// recv int64
+		band int
 	)
 	for cont {
 		select {
@@ -345,8 +350,13 @@ func (s *Storage) readCalend() {
 			switch cell.Cmd {
 			case "calend":
 				if cell.Day == 0 {
+					band = cell.Val
 					continue
 				}
+				if cell.Val != band {
+					continue
+				}
+				// recv = time.Now().UnixMicro() & B22_mask
 				// sequence of days
 				if !s.calday.CompareAndSwap(cell.Day-1, cell.Day) {
 					fmt.Printf("Topic calend[%d] wrong sequense of days %d, %d timestamp %d, time %d (ms)\n",
@@ -363,11 +373,8 @@ func (s *Storage) readCalend() {
 				if s.calc {
 					s.stockpileCost()
 				}
-				if s.verb {
-					fmt.Printf("Topic calend[%d] day %d, timestamp %d, time %d (ms)\n",
-						msg.TopicPartition.Partition, cell.Day,
-						msg.Timestamp.Local().UnixMilli(), time.Now().UnixMilli())
-				}
+				// fmt.Printf("calend %2d:%7d:%7d\n", cell.Day,
+				// 	msg.Timestamp.UnixMicro()&B22_mask, recv)
 				// send cell by ref
 				s.stocks[0].cal <- cell
 				s.stocks[1].cal <- cell
@@ -410,6 +417,7 @@ func (s *Storage) readStocks(inst int) {
 		cell *FlowCell
 		cont bool  = true
 		day  int32 = 0
+		cts  int64
 		ind  int
 	)
 	for cont {
@@ -420,9 +428,11 @@ func (s *Storage) readStocks(inst int) {
 		case cal = <-s.stocks[inst].cal:
 			// calend day
 			day = cal.Day
+			cts = time.Now().UnixMicro() & B22_mask
+			fmt.Printf("%2d:stocks[%d]:%7d\n", day, inst, cts)
 		// read stocks topic
 		default:
-			msg, err := consumer.ReadMessage(5 * s.stepDur)
+			msg, err := consumer.ReadMessage(s.stepDur)
 			if err != nil {
 				// fmt.Printf("Reader-%d failed, cause %v\n", inst, err)
 				continue
@@ -515,9 +525,7 @@ func (s *Storage) readStocks(inst int) {
 				// demands from outlet
 				s.processDemand(cell, ind)
 			default:
-				if s.verb {
-					fmt.Printf("Unknown command %v in cell\n", cell)
-				}
+				fmt.Printf("Unknown command %v in cell\n", cell)
 				continue
 			}
 
